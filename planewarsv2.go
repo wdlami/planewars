@@ -2,238 +2,271 @@ package main
 
 import (
 	"fmt"
-	"image"
-	"image/color"
-	"math"
 	"math/rand"
+	"os"
 	"time"
 
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/widget"
-	"github.com/eiannone/keyboard"
-	"github.com/fogleman/gg"
+	"github.com/veandco/go-sdl2/sdl"
+	"github.com/veandco/go-sdl2/ttf"
 )
 
 const (
-	screenWidth  = 800
-	screenHeight = 600
-	planeSize    = 50
-	enemySize    = 30
-	bulletSize   = 5
-	bulletSpeed  = 5
+	winWidth  = 800
+	winHeight = 600
 )
 
-type Player struct {
-	X, Y int
+type gameState struct {
+	playerTexture *sdl.Texture
+	playerPos     sdl.Rect
+	bullets       []sdl.Rect
+	enemies       []enemy
+	score         int
 }
 
-type Enemy struct {
-	X, Y int
+type enemy struct {
+	texture *sdl.Texture
+	pos     sdl.Rect
+	speed   int
 }
 
-type Bullet struct {
-	X, Y int
+func initialize() (*sdl.Window, *sdl.Renderer, *ttf.Font, error) {
+	err := sdl.Init(sdl.INIT_EVERYTHING)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("初始化SDL失败：%v", err)
+	}
+
+	window, err := sdl.CreateWindow(
+		"飞机大战",
+		sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED,
+		winWidth, winHeight, sdl.WINDOW_SHOWN,
+	)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("创建窗口失败：%v", err)
+	}
+
+	renderer, err := sdl.CreateRenderer(window, -1, sdl.RENDERER_ACCELERATED)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("创建渲染器失败：%v", err)
+	}
+
+	err = ttf.Init()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("初始化TTF失败：%v", err)
+	}
+
+	font, err := ttf.OpenFont("assets/font.ttf", 24)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("加载字体失败：%v", err)
+	}
+
+	return window, renderer, font, nil
 }
 
-var (
-	player      Player
-	enemies     []Enemy
-	bullets     []Bullet
-	score       int
-	gameOver    bool
-	startButton *widget.Button
-	infoLabel   *widget.Label
-	canvasObj   fyne.CanvasObject
-)
+func loadTexture(renderer *sdl.Renderer, imagePath string) (*sdl.Texture, error) {
+	img, err := sdl.LoadBMP(imagePath)
+	if err != nil {
+		return nil, fmt.Errorf("加载纹理失败：%v", err)
+	}
+	defer img.Free()
+
+	texture, err := renderer.CreateTextureFromSurface(img)
+	if err != nil {
+		return nil, fmt.Errorf("创建纹理失败：%v", err)
+	}
+
+	return texture, nil
+}
+
+func createEnemy(renderer *sdl.Renderer) (enemy, error) {
+	enemyTexture, err := loadTexture(renderer, "assets/enemy.bmp")
+	if err != nil {
+		return enemy{}, err
+	}
+
+	rand.Seed(time.Now().UnixNano())
+	x := rand.Intn(winWidth)
+	y := rand.Intn(winHeight/2) - winHeight
+	speed := rand.Intn(5) + 1 // 随机速度，1~5
+
+	return enemy{
+		texture: enemyTexture,
+		pos: sdl.Rect{
+			X: int32(x),
+			Y: int32(y),
+			W: 100,
+			H: 100,
+		},
+		speed: speed,
+	}, nil
+}
+
+func handleEvents(gameState *gameState) {
+    for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
+        switch event.(type) {
+        case *sdl.QuitEvent:
+            os.Exit(0)
+        case *sdl.KeyboardEvent:
+            keyEvent := event.(*sdl.KeyboardEvent)
+            if keyEvent.Type == sdl.KEYDOWN {
+                switch keyEvent.Keysym.Scancode {
+                case sdl.SCANCODE_LEFT:
+                    gameState.playerPos.X -= 50
+                case sdl.SCANCODE_RIGHT:
+                    gameState.playerPos.X += 50
+                case sdl.SCANCODE_SPACE:
+                    gameState.bullets = append(gameState.bullets, sdl.Rect{
+                        X: gameState.playerPos.X + gameState.playerPos.W/2 - 5,
+                        Y: gameState.playerPos.Y,
+                        W: 10,
+                        H: 20,
+                    })
+                }
+            }
+        }
+    }
+}
+
+
+func runGame(window *sdl.Window, renderer *sdl.Renderer, font *ttf.Font) error {
+	playerTexture, err := loadTexture(renderer, "assets/player.bmp")
+	if err != nil {
+		return err
+	}
+	defer playerTexture.Destroy()
+
+	bulletTexture, err := loadTexture(renderer, "assets/bullet.bmp")
+	if err != nil {
+		return err
+	}
+	defer bulletTexture.Destroy()
+
+	gameState := gameState{
+		playerTexture: playerTexture,
+		playerPos: sdl.Rect{
+			X: winWidth/2 - 50,
+			Y: winHeight - 100,
+			W: 100,
+			H: 100,
+		},
+		bullets: make([]sdl.Rect, 0),
+		enemies: make([]enemy, 0),
+		score:   0,
+	}
+
+	ticker := time.NewTicker(16 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		
+        handleEvents(&gameState) // 处理玩家输入
+		// 添加新的敌机
+		if len(gameState.enemies) < 5 { // 控制敌机数量
+			enemy, err := createEnemy(renderer)
+			if err != nil {
+				return err
+			}
+			gameState.enemies = append(gameState.enemies, enemy)
+		}
+
+		// 更新游戏状态
+		// 更新子弹位置并移除越界的子弹
+		updatedBullets := make([]sdl.Rect, 0, len(gameState.bullets))
+		for _, bullet := range gameState.bullets {
+			bullet.Y -= 10
+			if bullet.Y >= 0 {
+				updatedBullets = append(updatedBullets, bullet)
+			}
+		}
+		gameState.bullets = updatedBullets
+
+		for i := 0; i < len(gameState.enemies); {
+			gameState.enemies[i].pos.Y += int32(gameState.enemies[i].speed)
+			if gameState.enemies[i].pos.Y > winHeight {
+				gameState.enemies = append(gameState.enemies[:i], gameState.enemies[i+1:]...)
+			} else {
+				i++
+			}
+		}
+
+		// 碰撞检测
+		for i := 0; i < len(gameState.bullets); i++ {
+			hitEnemy := false
+			for j := 0; j < len(gameState.enemies); j++ {
+				if checkCollision(gameState.bullets[i], gameState.enemies[j].pos) {
+					gameState.score++
+					gameState.enemies = append(gameState.enemies[:j], gameState.enemies[j+1:]...)
+					hitEnemy = true
+					break
+				}
+			}
+			if hitEnemy {
+				gameState.bullets = append(gameState.bullets[:i], gameState.bullets[i+1:]...)
+				i-- // 因为删除了一个子弹，所以要减少 i
+			}
+		}
+
+		for i := 0; i < len(gameState.enemies); {
+			gameState.enemies[i].pos.Y += int32(gameState.enemies[i].speed)
+			if gameState.enemies[i].pos.Y > winHeight {
+				gameState.enemies = append(gameState.enemies[:i], gameState.enemies[i+1:]...)
+			} else {
+				i++
+			}
+		}
+
+		// 渲染
+		renderer.Clear()
+
+		for _, bullet := range gameState.bullets {
+			renderer.Copy(bulletTexture, nil, &bullet)
+		}
+
+		for _, enemy := range gameState.enemies {
+			renderer.Copy(enemy.texture, nil, &enemy.pos)
+		}
+
+		renderer.Copy(gameState.playerTexture, nil, &gameState.playerPos)
+
+		// 绘制分数
+		scoreText := fmt.Sprintf("Score: %d", gameState.score)
+		color := sdl.Color{R: 255, G: 255, B: 255, A: 255}
+		surface, err := font.RenderUTF8Solid(scoreText, color)
+		if err != nil {
+			return fmt.Errorf("渲染文本表面失败：%v", err)
+		}
+		defer surface.Free()
+		texture, err := renderer.CreateTextureFromSurface(surface)
+		if err != nil {
+			return fmt.Errorf("创建纹理失败：%v", err)
+		}
+		defer texture.Destroy()
+		renderer.Copy(texture, nil, &sdl.Rect{X: 10, Y: 10, W: 100, H: 30})
+
+		renderer.Present()
+		<-ticker.C
+	}
+}
+
+func checkCollision(rect1 sdl.Rect, rect2 sdl.Rect) bool {
+	return rect1.X < rect2.X+rect2.W &&
+		rect1.X+rect1.W > rect2.X &&
+		rect1.Y < rect2.Y+rect2.H &&
+		rect1.Y+rect1.H > rect2.Y
+}
 
 func main() {
-	myApp := app.New()
-	win := myApp.NewWindow("Plane Wars")
-
-	player = Player{X: screenWidth / 2, Y: screenHeight - planeSize}
-
-	canvasObj = canvas.NewRaster(drawGame)
-	canvasObj.Resize(fyne.NewSize(screenWidth, screenHeight))
-
-	startButton = widget.NewButton("Start Game", func() {
-		startButton.Hide()
-		infoLabel.Hide()
-		go gameLoop(win)
-	})
-	startButton.Importance = widget.HighImportance
-
-	infoLabel = widget.NewLabel("Use arrow keys to move and Space to shoot")
-
-	win.SetContent(container.NewVBox(
-		canvasObj,
-		container.NewHBox(
-			startButton,
-			infoLabel,
-		),
-	))
-
-	win.Resize(fyne.NewSize(screenWidth, screenHeight))
-	win.ShowAndRun()
-}
-
-func gameLoop(win fyne.Window) {
-	// 初始化游戏
-	initGame()
-
-	// 创建一个通道用于接收游戏结束信号
-	gameOverCh := make(chan struct{})
-
-	// 输出游戏循环开始的消息
-	fmt.Println("Game loop started...")
-
-	// 启动按键监听的 goroutine
-	go func() {
-		// 开始键盘监听
-		if err := keyboard.Open(); err != nil {
-			fmt.Println("Could not start keyboard input:", err)
-			return
-		}
-		defer keyboard.Close()
-
-		for {
-			// 监听键盘事件
-			_, key, err := keyboard.GetKey()
-			if err != nil {
-				fmt.Println("Error getting keyboard input:", err)
-				continue
-			}
-
-			// 输出按键事件
-			fmt.Println("Key pressed:", key)
-
-			// 更新游戏状态
-			updateGame(key)
-
-			// 如果游戏结束，向通道发送信号
-			if gameOver {
-				close(gameOverCh)
-				return
-			}
-		}
-	}()
-
-	// 游戏循环
-	for !gameOver {
-		// 更新画布内容
-		canvas.Refresh(canvasObj)
-
-		// 调试输出
-		fmt.Println("Game loop running...")
-
-		// 等待一段时间
-		time.Sleep(10 * time.Millisecond)
+	window, renderer, font, err := initialize()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "初始化失败：%v\n", err)
+		os.Exit(1)
 	}
+	defer window.Destroy()
+	defer renderer.Destroy()
 
-	fmt.Println("Game Over! Your score:", score)
-}
-
-func initGame() {
-	player = Player{X: screenWidth / 2, Y: screenHeight - planeSize}
-	enemies = nil
-	bullets = nil
-	score = 0
-	gameOver = false
-}
-
-func updateGame(key keyboard.Key) {
-	// 根据按键事件更新游戏状态
-	switch key {
-	case keyboard.KeyArrowLeft:
-		if player.X > 0 {
-			player.X -= 5
-		}
-	case keyboard.KeyArrowRight:
-		if player.X < screenWidth-planeSize {
-			player.X += 5
-		}
-	case keyboard.KeySpace:
-		bullets = append(bullets, Bullet{X: player.X + planeSize/2, Y: player.Y})
-	}
-
-	// 移动敌人
-	for i := range enemies {
-		enemies[i].Y += 2
-	}
-
-	// 移动子弹并检查碰撞
-	for i := 0; i < len(bullets); i++ {
-		bullets[i].Y -= bulletSpeed
-		for j := 0; j < len(enemies); j++ {
-			if distance(enemies[j].X, enemies[j].Y, bullets[i].X, bullets[i].Y) < enemySize {
-				score++
-				enemies = append(enemies[:j], enemies[j+1:]...)
-				bullets = append(bullets[:i], bullets[i+1:]...)
-			}
-		}
-	}
-
-	// 生成新的敌人
-	if len(enemies) < 5 {
-		enemies = append(enemies, Enemy{X: random(0, screenWidth-enemySize), Y: -enemySize})
-	}
-
-	// 检查玩家与敌人的碰撞
-	for _, enemy := range enemies {
-		if distance(player.X, player.Y, enemy.X, enemy.Y) < enemySize {
-			gameOver = true
-			break
-		}
+	err = runGame(window, renderer, font)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "游戏运行失败：%v\n", err)
+		os.Exit(1)
 	}
 }
 
-func drawGame(w, h int) image.Image {
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	ctx := gg.NewContextForRGBA(img)
-
-	// 清空画面
-	ctx.SetColor(color.Black)
-	ctx.Clear()
-
-	// 绘制玩家飞机
-	ctx.SetColor(color.White)
-	ctx.DrawRectangle(float64(player.X), float64(player.Y), planeSize, planeSize)
-	ctx.Fill()
-
-	// 绘制敌人
-	ctx.SetColor(color.RGBA{128, 128, 128, 255}) // 使用灰色绘制敌人
-	for _, enemy := range enemies {
-		ctx.DrawRectangle(float64(enemy.X), float64(enemy.Y), enemySize, enemySize)
-		ctx.Fill()
-	}
-
-	// 绘制子弹
-	ctx.SetColor(color.RGBA{255, 255, 0, 255})
-	for _, bullet := range bullets {
-		ctx.DrawRectangle(float64(bullet.X), float64(bullet.Y), bulletSize, bulletSize)
-		ctx.Fill()
-	}
-
-	// 显示得分
-	ctx.SetColor(color.White)
-	ctx.DrawString(fmt.Sprintf("Score: %d", score), 10, 20)
-
-	// 如果游戏结束，显示提示
-	if gameOver {
-		ctx.DrawString("Game Over!", screenWidth/2-50, screenHeight/2)
-	}
-
-	return img
-}
-
-func random(min, max int) int {
-	return min + rand.Intn(max-min)
-}
-
-func distance(x1, y1, x2, y2 int) float64 {
-	dx := float64(x1 - x2)
-	dy := float64(y1 - y2)
-	return math.Sqrt(dx*dx + dy*dy)
-}
