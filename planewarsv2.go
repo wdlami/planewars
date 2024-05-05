@@ -93,8 +93,8 @@ func createEnemy(renderer *sdl.Renderer) (enemy, error) {
 		pos: sdl.Rect{
 			X: int32(x),
 			Y: int32(y),
-			W: 100,
-			H: 100,
+			W: 50,
+			H: 50,
 		},
 		speed: speed,
 	}, nil
@@ -144,9 +144,9 @@ func runGame(window *sdl.Window, renderer *sdl.Renderer, font *ttf.Font) error {
 		playerTexture: playerTexture,
 		playerPos: sdl.Rect{
 			X: winWidth/2 - 50,
-			Y: winHeight - 100,
-			W: 100,
-			H: 100,
+			Y: winHeight - 70,
+			W: 70,
+			H: 70,
 		},
 		bullets: make([]sdl.Rect, 0),
 		enemies: make([]enemy, 0),
@@ -214,7 +214,9 @@ func runGame(window *sdl.Window, renderer *sdl.Renderer, font *ttf.Font) error {
 			}
 		}
 
-		// 渲染
+		// 设置绘制颜色为白色
+		renderer.SetDrawColor(255, 255, 255, 255)
+		// 清空渲染器，以白色填充整个窗口
 		renderer.Clear()
 
 		for _, bullet := range gameState.bullets {
@@ -229,7 +231,7 @@ func runGame(window *sdl.Window, renderer *sdl.Renderer, font *ttf.Font) error {
 
 		// 绘制分数
 		scoreText := fmt.Sprintf("Score: %d", gameState.score)
-		color := sdl.Color{R: 255, G: 255, B: 255, A: 255}
+		color := sdl.Color{R: 255, G: 86, B: 2, A: 255}
 		surface, err := font.RenderUTF8Solid(scoreText, color)
 		if err != nil {
 			return fmt.Errorf("渲染文本表面失败：%v", err)
