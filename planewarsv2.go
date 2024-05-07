@@ -101,35 +101,34 @@ func createEnemy(renderer *sdl.Renderer) (enemy, error) {
 }
 
 func handleEvents(gameState *gameState) {
-    for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
-        switch event.(type) {
-        case *sdl.QuitEvent:
-            os.Exit(0)
-        case *sdl.KeyboardEvent:
-            keyEvent := event.(*sdl.KeyboardEvent)
-            if keyEvent.Type == sdl.KEYDOWN {
-                switch keyEvent.Keysym.Scancode {
-                case sdl.SCANCODE_LEFT:
-                    if gameState.playerPos.X >= 50 { // 左移时检查边界
-                        gameState.playerPos.X -= 50
-                    }
-                case sdl.SCANCODE_RIGHT:
-                    if gameState.playerPos.X+gameState.playerPos.W <= winWidth { // 右移时检查边界
-                        gameState.playerPos.X += 50
-                    }
-                case sdl.SCANCODE_SPACE:
-                    gameState.bullets = append(gameState.bullets, sdl.Rect{
-                        X: gameState.playerPos.X + gameState.playerPos.W/2 - 5,
-                        Y: gameState.playerPos.Y,
-                        W: 10,
-                        H: 20,
-                    })
-                }
-            }
-        }
-    }
+	for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
+		switch event.(type) {
+		case *sdl.QuitEvent:
+			os.Exit(0)
+		case *sdl.KeyboardEvent:
+			keyEvent := event.(*sdl.KeyboardEvent)
+			if keyEvent.Type == sdl.KEYDOWN {
+				switch keyEvent.Keysym.Scancode {
+				case sdl.SCANCODE_LEFT:
+					if gameState.playerPos.X >= 50 { // 左移时检查边界
+						gameState.playerPos.X -= 50
+					}
+				case sdl.SCANCODE_RIGHT:
+					if gameState.playerPos.X+gameState.playerPos.W <= winWidth { // 右移时检查边界
+						gameState.playerPos.X += 50
+					}
+				case sdl.SCANCODE_SPACE:
+					gameState.bullets = append(gameState.bullets, sdl.Rect{
+						X: gameState.playerPos.X + gameState.playerPos.W/2 - 5,
+						Y: gameState.playerPos.Y,
+						W: 10,
+						H: 20,
+					})
+				}
+			}
+		}
+	}
 }
-
 
 func runGame(window *sdl.Window, renderer *sdl.Renderer, font *ttf.Font) error {
 	playerTexture, err := loadTexture(renderer, "assets/player.bmp")
@@ -161,8 +160,8 @@ func runGame(window *sdl.Window, renderer *sdl.Renderer, font *ttf.Font) error {
 	defer ticker.Stop()
 
 	for {
-		
-        handleEvents(&gameState) // 处理玩家输入
+		handleEvents(&gameState) // 处理玩家输入
+
 		// 添加新的敌机
 		if len(gameState.enemies) < 5 { // 控制敌机数量
 			enemy, err := createEnemy(renderer)
@@ -183,6 +182,7 @@ func runGame(window *sdl.Window, renderer *sdl.Renderer, font *ttf.Font) error {
 		}
 		gameState.bullets = updatedBullets
 
+		// 移动敌机
 		for i := 0; i < len(gameState.enemies); {
 			gameState.enemies[i].pos.Y += int32(gameState.enemies[i].speed)
 			if gameState.enemies[i].pos.Y > winHeight {
@@ -192,35 +192,29 @@ func runGame(window *sdl.Window, renderer *sdl.Renderer, font *ttf.Font) error {
 			}
 		}
 
-		// 碰撞检测
+		// 检查敌机与飞机碰撞
+		for _, enemy := range gameState.enemies {
+			if checkCollision(gameState.playerPos, enemy.pos) {
+				gameOver(renderer, font, gameState.score)
+				return nil
+			}
+		}
+
+		// 检查子弹与敌机碰撞
 		for i := 0; i < len(gameState.bullets); i++ {
-			hitEnemy := false
 			for j := 0; j < len(gameState.enemies); j++ {
 				if checkCollision(gameState.bullets[i], gameState.enemies[j].pos) {
 					gameState.score++
+					gameState.bullets = append(gameState.bullets[:i], gameState.bullets[i+1:]...)
 					gameState.enemies = append(gameState.enemies[:j], gameState.enemies[j+1:]...)
-					hitEnemy = true
+					i-- // 因为删除了一个子弹，所以要减少 i
 					break
 				}
 			}
-			if hitEnemy {
-				gameState.bullets = append(gameState.bullets[:i], gameState.bullets[i+1:]...)
-				i-- // 因为删除了一个子弹，所以要减少 i
-			}
 		}
 
-		for i := 0; i < len(gameState.enemies); {
-			gameState.enemies[i].pos.Y += int32(gameState.enemies[i].speed)
-			if gameState.enemies[i].pos.Y > winHeight {
-				gameState.enemies = append(gameState.enemies[:i], gameState.enemies[i+1:]...)
-			} else {
-				i++
-			}
-		}
-
-		// 设置绘制颜色为白色
+		// 渲染游戏画面
 		renderer.SetDrawColor(255, 255, 255, 255)
-		// 清空渲染器，以白色填充整个窗口
 		renderer.Clear()
 
 		for _, bullet := range gameState.bullets {
@@ -253,6 +247,30 @@ func runGame(window *sdl.Window, renderer *sdl.Renderer, font *ttf.Font) error {
 	}
 }
 
+
+func gameOver(renderer *sdl.Renderer, font *ttf.Font, score int) {
+	renderer.SetDrawColor(0, 0, 0, 255)
+	renderer.Clear()
+
+	gameOverText := "Game Over!"
+	scoreText := fmt.Sprintf("score: %d", score)
+
+	color := sdl.Color{R: 255, G: 0, B: 0, A: 255}
+
+	gameOverSurface, _ := font.RenderUTF8Solid(gameOverText, color)
+	scoreSurface, _ := font.RenderUTF8Solid(scoreText, color)
+
+	gameOverTexture, _ := renderer.CreateTextureFromSurface(gameOverSurface)
+	scoreTexture, _ := renderer.CreateTextureFromSurface(scoreSurface)
+
+	renderer.Copy(gameOverTexture, nil, &sdl.Rect{X: winWidth / 2, Y: winHeight / 2, W: 200, H: 50})
+	renderer.Copy(scoreTexture, nil, &sdl.Rect{X: winWidth / 2, Y: winHeight/2 + 100, W: 200, H: 50})
+
+	renderer.Present()
+
+	sdl.Delay(2000) // 延迟5秒钟
+}
+
 func checkCollision(rect1 sdl.Rect, rect2 sdl.Rect) bool {
 	return rect1.X < rect2.X+rect2.W &&
 		rect1.X+rect1.W > rect2.X &&
@@ -275,4 +293,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-
