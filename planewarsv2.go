@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	winWidth  = 800
+	winWidth  = 600
 	winHeight = 600
 )
 
@@ -84,7 +84,7 @@ func createEnemy(renderer *sdl.Renderer) (enemy, error) {
 	}
 
 	rand.Seed(time.Now().UnixNano())
-	x := rand.Intn(winWidth)
+	x := rand.Intn(winWidth - 50) // 敌机宽度为50
 	y := rand.Intn(winHeight/2) - winHeight
 	speed := rand.Intn(5) + 1 // 随机速度，1~5
 
@@ -110,9 +110,13 @@ func handleEvents(gameState *gameState) {
             if keyEvent.Type == sdl.KEYDOWN {
                 switch keyEvent.Keysym.Scancode {
                 case sdl.SCANCODE_LEFT:
-                    gameState.playerPos.X -= 50
+                    if gameState.playerPos.X >= 50 { // 左移时检查边界
+                        gameState.playerPos.X -= 50
+                    }
                 case sdl.SCANCODE_RIGHT:
-                    gameState.playerPos.X += 50
+                    if gameState.playerPos.X+gameState.playerPos.W <= winWidth { // 右移时检查边界
+                        gameState.playerPos.X += 50
+                    }
                 case sdl.SCANCODE_SPACE:
                     gameState.bullets = append(gameState.bullets, sdl.Rect{
                         X: gameState.playerPos.X + gameState.playerPos.W/2 - 5,
@@ -145,8 +149,8 @@ func runGame(window *sdl.Window, renderer *sdl.Renderer, font *ttf.Font) error {
 		playerPos: sdl.Rect{
 			X: winWidth/2 - 50,
 			Y: winHeight - 70,
-			W: 70,
-			H: 70,
+			W: 60,
+			H: 60,
 		},
 		bullets: make([]sdl.Rect, 0),
 		enemies: make([]enemy, 0),
