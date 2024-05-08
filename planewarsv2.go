@@ -243,10 +243,13 @@ func runGame(window *sdl.Window, renderer *sdl.Renderer, font *ttf.Font) error {
 		renderer.Copy(texture, nil, &sdl.Rect{X: 10, Y: 10, W: 100, H: 30})
 
 		renderer.Present()
-		<-ticker.C
+
+		select {
+		case <-ticker.C:
+			continue
+		}
 	}
 }
-
 
 func gameOver(renderer *sdl.Renderer, font *ttf.Font, score int) {
 	renderer.SetDrawColor(0, 0, 0, 255)
@@ -268,7 +271,13 @@ func gameOver(renderer *sdl.Renderer, font *ttf.Font, score int) {
 
 	renderer.Present()
 
-	sdl.Delay(2000) // 延迟5秒钟
+	for {
+		event := sdl.WaitEvent()
+		switch event.(type) {
+		case *sdl.QuitEvent:
+			return
+		}
+	}
 }
 
 func checkCollision(rect1 sdl.Rect, rect2 sdl.Rect) bool {
