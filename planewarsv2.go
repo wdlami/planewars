@@ -195,11 +195,11 @@ func runGame(window *sdl.Window, renderer *sdl.Renderer, font *ttf.Font) error {
 		// 检查敌机与飞机碰撞
 		for _, enemy := range gameState.enemies {
 			if checkCollision(gameState.playerPos, enemy.pos) {
-				gameOver(renderer, font, gameState.score)
+				gameOver(window, renderer, font, gameState.score)
 				return nil
 			}
 		}
-
+		
 		// 检查子弹与敌机碰撞
 		for i := 0; i < len(gameState.bullets); i++ {
 			for j := 0; j < len(gameState.enemies); j++ {
@@ -251,31 +251,40 @@ func runGame(window *sdl.Window, renderer *sdl.Renderer, font *ttf.Font) error {
 	}
 }
 
-func gameOver(renderer *sdl.Renderer, font *ttf.Font, score int) {
+func gameOver(window *sdl.Window, renderer *sdl.Renderer, font *ttf.Font, score int) {
 	renderer.SetDrawColor(0, 0, 0, 255)
 	renderer.Clear()
 
 	gameOverText := "Game Over!"
-	scoreText := fmt.Sprintf("score: %d", score)
+	scoreText := fmt.Sprintf("Score: %d", score)
+	restartText := "Press Enter to Restart"
 
 	color := sdl.Color{R: 255, G: 0, B: 0, A: 255}
 
 	gameOverSurface, _ := font.RenderUTF8Solid(gameOverText, color)
 	scoreSurface, _ := font.RenderUTF8Solid(scoreText, color)
+	restartSurface, _ := font.RenderUTF8Solid(restartText, color)
 
 	gameOverTexture, _ := renderer.CreateTextureFromSurface(gameOverSurface)
 	scoreTexture, _ := renderer.CreateTextureFromSurface(scoreSurface)
+	restartTexture, _ := renderer.CreateTextureFromSurface(restartSurface)
 
-	renderer.Copy(gameOverTexture, nil, &sdl.Rect{X: winWidth / 2, Y: winHeight / 2, W: 200, H: 50})
-	renderer.Copy(scoreTexture, nil, &sdl.Rect{X: winWidth / 2, Y: winHeight/2 + 100, W: 200, H: 50})
+	renderer.Copy(gameOverTexture, nil, &sdl.Rect{X: winWidth/2 - 100, Y: winHeight/2 - 50, W: 200, H: 50})
+	renderer.Copy(scoreTexture, nil, &sdl.Rect{X: winWidth/2 - 100, Y: winHeight/2, W: 200, H: 50})
+	renderer.Copy(restartTexture, nil, &sdl.Rect{X: winWidth/2 - 150, Y: winHeight/2 + 50, W: 300, H: 50})
 
 	renderer.Present()
 
 	for {
 		event := sdl.WaitEvent()
-		switch event.(type) {
+		switch t := event.(type) {
 		case *sdl.QuitEvent:
 			return
+		case *sdl.KeyboardEvent:
+			if t.Keysym.Scancode == sdl.SCANCODE_RETURN {
+				runGame(window, renderer, font)
+				return
+			}
 		}
 	}
 }
